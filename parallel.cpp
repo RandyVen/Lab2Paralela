@@ -7,9 +7,12 @@
 #include <string>
 #include <vector>
 #include <omp.h>
+#include <cstdlib>
 #include <ctime>
 
 using namespace std;
+
+#define UMBRAL 1000
 
 void par_qsort(int *data, int lo, int hi) // Funcion del archivo qsort.c
 {
@@ -34,8 +37,10 @@ void par_qsort(int *data, int lo, int hi) // Funcion del archivo qsort.c
             h--;
         }
     }
-    // recursive call
+// recursive call
+#pragma omp task shared(data) final(l - lo < UMBRAL)
     par_qsort(data, lo, h);
+#pragma omp task shared(data) final(hi - l < UMBRAL)
     par_qsort(data, l, hi);
 }
 
@@ -43,6 +48,7 @@ int main(int argc, char *argv[])
 {
     double start, end;
     start = omp_get_wtime();
+
     long limit = pow(10, 2);
     if (argc == 1)
     {
@@ -54,6 +60,18 @@ int main(int argc, char *argv[])
 
     // Generando la lista de numeros
     int *randArray = new int[N];
+    // #pragma omp parallel
+    //     {
+    // #pragma omp single
+    //         {
+    //             printf("Numero de hilos: %d \n", omp_get_num_threads());
+    //         }
+    //         srand(time(NULL) + omp_get_thread_num());
+    // #pragma omp for
+    //         for (int i = 0; i < N; i++)
+    //             randArray[i] = rand() % 32769;
+    //     }
+
     for (int i = 0; i < N; i++)
         randArray[i] = rand() % 100000; // Generando numeros random
 
@@ -63,16 +81,19 @@ int main(int argc, char *argv[])
     {
         for (int count = 0; count < N; count++)
         {
-            myfile << randArray[count] << ",";
+            {
+                myfile << randArray[count] << ",";
+            }
         }
         myfile.close();
     }
     else
+    {
         cout << "Error generando el archivo";
+    }
 
-    printf("archivo generado\n");
     delete[] randArray;
-
+    printf("archivo generado");
     // Leyendo los datos de un archivo
     std::ifstream inFile("data.txt");
     std::vector<int> numbers;
@@ -86,7 +107,14 @@ int main(int argc, char *argv[])
     int n = numbers.size();
     int *a = &numbers[0];
 
-    par_qsort(a, 0, N - 1);
+#pragma omp parallel num_threads(T)
+    {
+#pragma omp single
+        {
+            par_qsort(a, 0, N - 1);
+            // #pragma omp taskwait
+        }
+    }
 
     printf("Primeros Elementos: %d, %d, %d\n", a[0], a[1], a[2]);
     printf("Medios Elementos: %d, %d, %d\n", a[N / 4], a[N / 4 + 1], a[N / 4 + 2]);
@@ -96,8 +124,10 @@ int main(int argc, char *argv[])
     ofstream myOutputfile("dataSorted.txt");
     if (myOutputfile.is_open())
     {
+        // #pragma omp parallel for ordered
         for (int count = 0; count < N; count++)
         {
+            // #pragma omp ordered
             myOutputfile << a[count] << ",";
         }
         myOutputfile.close();
